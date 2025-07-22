@@ -594,6 +594,40 @@ def get_random_edge_user_agent():
     )
     return user_agent
 
+def wait_and_retry(wait_func, max_retries=3, delay=2, error_message="Operation failed"):
+    """Generic retry function with exponential backoff"""
+    for attempt in range(max_retries):
+        try:
+            return wait_func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise Exception(f"{error_message} after {max_retries} attempts: {str(e)}")
+            time.sleep(delay * (2 ** attempt))  # Exponential backoff
+            print(f"Attempt {attempt + 1} failed, retrying in {delay * (2 ** attempt)} seconds...")
+
+def check_for_errors(driver, chat_id, step_name):
+    """Check for common error messages on the page"""
+    error_selectors = [
+        "div[class*='error']",
+        "div[class*='alert']",
+        "span[class*='error']",
+        ".error-message",
+        ".alert-danger",
+        "[data-testid*='error']"
+    ]
+    
+    for selector in error_selectors:
+        try:
+            error_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            for element in error_elements:
+                if element.is_displayed() and element.text.strip():
+                    error_text = element.text.strip()
+                    send_log(chat_id, f"⚠️ *{step_name}*: Error detected: `{error_text}`", is_error=True)
+                    return error_text
+        except:
+            continue
+    return None
+
 # --- New function to handle 3DS verification ---
 def handle_3ds_verification(driver, wait, chat_id, user_dir):
     """
@@ -926,7 +960,7 @@ def solve_captcha_helper(driver, wait, chat_id, user_dir, anti_captcha_api_key, 
                 time.sleep(2) # Short sleep to allow potential error message to appear
 
                 # IMPORTANT: If CAPTCHA is wrong, click reset and retry, DO NOT exit function.
-                error_message_locator = (By.XPATH, "//*[contains(@class, 'awsui_error') and (contains(text(), 'wasn’t quite right') or contains(text(), 'incorrect') or contains(text(), 'tidak cocok'))]")
+                error_message_locator = (By.XPATH, "//*[contains(@class, 'awsui_error') and (contains(text(), 'wasn't quite right') or contains(text(), 'incorrect') or contains(text(), 'tidak cocok'))]")
                 
                 try:
                     error_elems = WebDriverWait(driver, 3).until(EC.presence_of_all_elements_located(error_message_locator))
@@ -1288,13 +1322,18 @@ def aws_signup_process(message):
 
         send_log(chat_id, f"🌐 *Browser*: User-Agent digunakan: `{user_agent}`")
         send_log(chat_id, "🚀 *Memulai*: Membuka halaman AWS signup...")
-        driver.get("https://signin.aws.amazon.com/signup?request_type=register")
+        
+        def load_registration_page():
+            driver.get("https://signin.aws.amazon.com/signup?request_type=register")
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#emailAddress")))
+            return True
+        
+        wait_and_retry(load_registration_page, max_retries=3, error_message="Failed to load registration page")
         
         # Add human-like interaction after page load
         human_like_interaction(driver)
         random_sleep(2, 4)
 
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#emailAddress")))
         send_log(chat_id, "✅ *Halaman Dimuat*: Halaman signup AWS berhasil dimuat.")
         check_stop_event()
 
@@ -2149,7 +2188,7 @@ def aws_signup_process(message):
                             save_screenshot(driver, user_dir, f"incorrect_sms_otp_try_{phone_otp_try}")
                         else:
                             send_log(chat_id, "⚠️ *OTP SMSHub*: Tidak ada pesan error OTP tapi tidak maju ke halaman Support Plan. Mengulang...", is_error=True)
-                            save_log(chat_id, f"DEBUG: Current URL after SMS OTP submit (stuck): {driver.current_url}")
+                            send_log(chat_id, f"DEBUG: Current URL after SMS OTP submit (stuck): {driver.current_url}")
                             save_screenshot(driver, user_dir, f"sms_otp_stuck_try_{phone_otp_try}")
                             driver.refresh(); random_sleep(3,5)
                             continue # Continue to next attempt
