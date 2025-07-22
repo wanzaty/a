@@ -1526,6 +1526,7 @@ def aws_signup_process(message):
                         driver.switch_to.default_content() # Kembali ke main content setelah error
                     else:
                         send_log(chat_id, "⚠️ *OTP Email*: Tidak ada pesan error OTP tapi tidak maju ke halaman password. Mengulang...", is_error=True)
+                        send_log(chat_id, f"DEBUG: Current URL after SMS OTP submit (stuck): {driver.current_url}")
                         save_screenshot(driver, user_dir, f"otp_email_stuck_try_{otp_attempt}")
                         driver.switch_to.default_content() # Kembali ke main content
                         # Force refresh to get new CAPTCHA/state if stuck
