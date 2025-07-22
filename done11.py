@@ -4,13 +4,46 @@ import threading
 import time
 import random
 import undetected_chromedriver as uc
-# Import selenium-wire untuk proxy
-try:
-    from seleniumwire import webdriver as webdriver_wire
-except ImportError:
-    print("[ERROR] Modul 'selenium-wire' tidak terinstall. Silakan jalankan: pip install selenium-wire")
-    webdriver_wire = None
 
+# Coba import selenium-wire dengan beberapa cara
+SELENIUM_WIRE_AVAILABLE = False
+try:
+    # Update pip dan dependencies terlebih dahulu jika diperlukan
+    import subprocess
+    import sys
+    
+    from seleniumwire import webdriver as wire_webdriver
+    from seleniumwire.utils import decode
+    SELENIUM_WIRE_AVAILABLE = True
+    print("[INFO] selenium-wire berhasil diimport.")
+except ImportError as e:
+    print(f"[ERROR] Modul 'selenium-wire' tidak terinstall atau ada konflik dependency.")
+    print("Silakan jalankan perintah berikut untuk memperbaiki:")
+    print("pip install --upgrade httpx>=0.28.1 httpcore>=1.0.0 h11>=0.14.0")
+    print("pip install --force-reinstall selenium-wire")
+    try:
+        from selenium import webdriver
+        print("[INFO] Menggunakan selenium standar sebagai fallback.")
+        wire_webdriver = webdriver
+    except ImportError as e:
+        print(f"[CRITICAL] Selenium tidak tersedia: {e}")
+        exit(1)
+
+def fix_dependencies():
+    """Perbaiki dependency conflicts secara otomatis"""
+    try:
+        print("[INFO] Memperbaiki dependency conflicts...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", 
+                             "httpx>=0.28.1", "httpcore>=1.0.0", "h11>=0.14.0", 
+                             "h2>=4.0.0", "idna>=3.0", "pydantic>=2.11.5"])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--force-reinstall", "selenium-wire"])
+        print("[SUCCESS] Dependencies berhasil diperbaiki. Silakan restart script.")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Gagal memperbaiki dependencies: {e}")
+        return False
+
+# Import lainnya
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -1284,7 +1317,7 @@ def aws_signup_process(message):
         # Set a higher default WebDriverWait timeout, especially crucial with proxies
         DEFAULT_WAIT_TIMEOUT = 45 # Increased from 30
 
-        if use_proxy and proxy_string and webdriver_wire:
+        if use_proxy and proxy_string and SELENIUM_WIRE_AVAILABLE:
             send_log(chat_id, f"🔌 *Menggunakan Proxy*: `{proxy_string}`")
             
             proxy_parts = proxy_string.split(':')
@@ -1306,10 +1339,10 @@ def aws_signup_process(message):
             
             # Pass seleniumwire_options to webdriver_wire.Chrome
             # Note: service_log_path is not directly passed here, relying on --disable-logging
-            driver = webdriver_wire.Chrome(options=options, seleniumwire_options=selenium_wire_options)
+            driver = wire_webdriver.Chrome(options=options, seleniumwire_options=selenium_wire_options)
 
         else:
-            if use_proxy and (not proxy_string or not webdriver_wire):
+            if use_proxy and (not proxy_string or not SELENIUM_WIRE_AVAILABLE):
                 send_log(chat_id, "⚠️ *Peringatan*: Proxy diaktifkan tetapi tidak diatur/modul `selenium-wire` tidak ditemukan. Menjalankan tanpa proxy.", is_error=True)
             else:
                 send_log(chat_id, "🔌 *Tanpa Proxy*: Menjalankan dengan koneksi langsung.")
@@ -2962,7 +2995,7 @@ def set_proxy_details(message):
         bot.register_next_step_handler(message, set_proxy_details)
         return
     
-    if not webdriver_wire:
+    if not SELENIUM_WIRE_AVAILABLE:
         bot.send_message(chat_id, "❌ *Modul `selenium-wire` tidak ditemukan*. Fitur proxy tidak akan berfungsi. Silakan instal dengan `pip install selenium-wire`.", parse_mode='Markdown', reply_markup=batal_markup())
         bot.register_next_step_handler(message, set_proxy_details)
         return
@@ -3143,7 +3176,7 @@ if __name__ == '__main__':
         print(f"[INFO] Berhasil memuat {len(SMSHUB_DATA)} negara dari '{COUNTRY_OPERATORS_FILE}'.")
 
 
-    if not webdriver_wire:
+    if not SELENIUM_WIRE_AVAILABLE:
         print("\n[PERINGATAN] Modul 'selenium-wire' tidak ditemukan. Fitur proxy tidak akan berfungsi.\nJalankan 'pip install selenium-wire' untuk mengaktifkannya.\n")
     if Image is None:
         print("\n[PERINGATAN] Modul 'Pillow' tidak ditemukan. Fitur watermark tidak akan berfungsi.\nJalankan 'pip install Pillow' untuk mengaktifkannya.\n")
